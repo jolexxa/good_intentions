@@ -1,0 +1,10 @@
+# Tests
+test/
+
+# Coverage
+coverage/
+coverage_badge.svg
+
+# CI/tooling
+.github/
+.dart_tool/
