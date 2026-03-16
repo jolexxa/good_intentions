@@ -4,27 +4,26 @@
 
 Progressively validate and visualize your architecture as your project grows. Good intentions builds off [intentions] to enforce "correct" architecture decisions throughout your project.
 
-Add `good_intentions` as a dev dependency alongside `intentions` (the
-annotations). Then run `dart run build_runner build`. You'll get:
+Add `good_intentions` as a dependency and create a [Dart build hook][hooks] (shown below) to run it. The next time your project builds, you'll see:
 
-- 🖼️ **`lib/architecture.g.puml`** — a PlantUML class diagram of your annotated
-  architecture, with violations drawn in red.
-- 💻 **Console output** — architecture validation warnings and errors.
+- **`lib/architecture.g.puml`** — a PlantUML class diagram of your annotated architecture, with violations drawn in red.
+- **Console output** — architecture validation warnings and errors during `dart run`, `dart test`, and `dart build`.
 
 ## 📦 Installation
 
-```yaml
-# pubspec.yaml
-dependencies:
-  intentions: ...
-
-dev_dependencies:
-  build_runner: ...
-  good_intentions: ...
+```bash
+dart pub add good_intentions intentions
 ```
 
-> [!TIP]
-> `good_intentions` is a `build_runner` utility, but you don't need a `build.yaml` file in your project. It will execute whenever you run `dart run build_runner build`.
+Create a simple `hook/build.dart` in your package that calls into `good_intentions`:
+
+```dart
+import 'package:good_intentions/good_intentions.dart';
+
+Future<void> main(List<String> args) async => validateArchitecture(args);
+```
+
+Architecture validation will now run automatically during `dart run`, `dart test`, and `dart build`.
 
 ## 🤖 Why
 
@@ -218,7 +217,7 @@ classDiagram
             <<dataSource>>
         }
     }
- 
+
     SessionRepository *-- DownloadTracker
     SessionRepository --> UserApi
     ChatCubit --> SessionRepository
@@ -227,3 +226,4 @@ classDiagram
 
 [coverage_badge]: coverage_badge.svg
 [intentions]: https://pub.dev/packages/intentions
+[hooks]: https://dart.dev/tools/hooks

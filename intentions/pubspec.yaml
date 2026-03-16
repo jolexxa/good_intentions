@@ -1,6 +1,6 @@
 name: intentions
 description: Class annotations to indicate architectural intent.
-version: 0.1.0
+version: 0.0.0
 repository: https://github.com/jolexxa/good_intentions/tree/main/intentions
 issue_tracker: https://github.com/jolexxa/good_intentions/issues
 topics:
