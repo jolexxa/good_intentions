@@ -1,0 +1,9 @@
+builders:
+  intentions:
+    import: "package:good_intentions/good_intentions.dart"
+    builder_factories: ["intentionsBuilder"]
+    build_extensions:
+      "$package$":
+        - "lib/architecture.g.puml"
+    auto_apply: root_package
+    build_to: source

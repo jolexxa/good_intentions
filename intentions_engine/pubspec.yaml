@@ -1,0 +1,21 @@
+name: intentions_engine
+description: Architectural layer rules and progressive enforcement engine.
+version: 0.1.0
+repository: https://github.com/jolexxa/good_intentions/tree/main/intentions_engine
+issue_tracker: https://github.com/jolexxa/good_intentions/issues
+topics:
+  - architecture
+  - validation
+  - linting
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  intentions: ^0.1.0
+  meta: ^1.18.0
+
+dev_dependencies:
+  test: ^1.29.0
+  test_coverage_badge: ^0.3.2
+  very_good_analysis: ^10.2.0
