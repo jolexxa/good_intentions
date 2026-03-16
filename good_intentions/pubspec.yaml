@@ -1,7 +1,7 @@
 name: good_intentions
 description: >-
   Validate and visualize architectural intentions in your codebase.
-version: 0.0.0
+version: 0.2.0
 repository: https://github.com/jolexxa/good_intentions/tree/main/good_intentions
 issue_tracker: https://github.com/jolexxa/good_intentions/issues
 topics:
