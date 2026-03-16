@@ -50,7 +50,10 @@ abstract final class PumlWriter {
       ..writeln('package "$packageName" {');
 
     // Write class declarations (only connected non-model classes).
-    for (final ac in graph.classes) {
+    // Sort by name for deterministic output.
+    final sortedClasses = graph.classes.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    for (final ac in sortedClasses) {
       if (!connected.contains(ac.name)) continue;
       if (owned.contains(ac.name)) continue; // emitted inside owner rectangle
 
@@ -67,18 +70,20 @@ abstract final class PumlWriter {
     }
 
     // Emit rectangles whose root owner is not in the graph (orphaned parts).
-    for (final entry in parts.entries) {
-      if (graph[entry.key] != null) continue; // already handled above
-      _writePackage(buffer, entry.key, null, entry.value, graph);
+    final sortedPartKeys = parts.keys.toList()..sort();
+    for (final key in sortedPartKeys) {
+      if (graph[key] != null) continue; // already handled above
+      _writePackage(buffer, key, null, parts[key]!, graph);
     }
 
     buffer.writeln();
 
     // Write dependency arrows (skip model targets).
-    // Violations are drawn in red.
-    for (final ac in graph.classes) {
+    // Violations are drawn in red. Sorted for deterministic output.
+    for (final ac in sortedClasses) {
       if (ac.intention.isModel) continue;
-      for (final depName in ac.dependencies) {
+      final sortedDeps = ac.dependencies.toList()..sort();
+      for (final depName in sortedDeps) {
         final dep = graph[depName];
         if (dep == null || dep.intention.isModel) continue;
 
@@ -111,7 +116,9 @@ abstract final class PumlWriter {
     if (ownerStereotype != null) {
       buffer.writeln('    class $ownerName << $ownerStereotype >>');
     }
-    for (final child in children) {
+    final sortedChildren = children.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    for (final child in sortedChildren) {
       final childStereotype =
           _resolveOwnerIntention(child, graph)?.name ?? child.intention.name;
       buffer.writeln('    class ${child.name} << $childStereotype >>');
