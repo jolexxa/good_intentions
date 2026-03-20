@@ -59,13 +59,12 @@ ValidationResult validate({
   ValidationResult result({
     required Severity severity,
     required String message,
-  }) =>
-      ValidationResult(
-        from: from.name,
-        to: to.name,
-        severity: severity,
-        message: message,
-      );
+  }) => ValidationResult(
+    from: from.name,
+    to: to.name,
+    severity: severity,
+    message: message,
+  );
 
   // Model is cross-cutting — always ok.
   if (to.intention.isModel) {
@@ -79,7 +78,8 @@ ValidationResult validate({
   if (from.intention.isHack) {
     return result(
       severity: Severity.warning,
-      message: '${from.name} is annotated @hack — '
+      message:
+          '${from.name} is annotated @hack — '
           'all dependencies produce warnings until its role is determined.',
     );
   }
@@ -88,7 +88,8 @@ ValidationResult validate({
   if (to.intention.isHack) {
     return result(
       severity: Severity.warning,
-      message: '${to.name} is annotated @hack — '
+      message:
+          '${to.name} is annotated @hack — '
           'depending on it produces a warning until its role is determined.',
     );
   }
@@ -100,7 +101,8 @@ ValidationResult validate({
     if (!isOwner && !isSibling) {
       return result(
         severity: Severity.error,
-        message: '${to.name} is an implementation detail of ${to.owner} — '
+        message:
+            '${to.name} is an implementation detail of ${to.owner} — '
             '${from.name} cannot depend on it directly.',
       );
     }
@@ -121,7 +123,8 @@ ValidationResult validate({
   if (fromLayer.isBelow(toLayer)) {
     return result(
       severity: Severity.error,
-      message: '${from.name} (${fromLayer.name}) cannot depend on '
+      message:
+          '${from.name} (${fromLayer.name}) cannot depend on '
           '${to.name} (${toLayer.name}) — upward dependencies are forbidden.',
     );
   }
@@ -143,7 +146,8 @@ ValidationResult validate({
 
     return result(
       severity: Severity.error,
-      message: '${from.name} and ${to.name} are both at the '
+      message:
+          '${from.name} and ${to.name} are both at the '
           '${fromLayer.name} layer — sibling dependencies are forbidden.',
     );
   }
@@ -158,7 +162,8 @@ ValidationResult validate({
     if (fromLayer == claim.claimedByLayer) {
       return result(
         severity: Severity.ok,
-        message: '${to.name} is claimed by ${claim.claimedByLayer.name}, '
+        message:
+            '${to.name} is claimed by ${claim.claimedByLayer.name}, '
             'and ${from.name} is at that layer.',
       );
     }
@@ -166,7 +171,8 @@ ValidationResult validate({
     // Everyone else — above or below — must go through the claiming layer.
     return result(
       severity: Severity.error,
-      message: '${to.name} is claimed by the ${claim.claimedByLayer.name} '
+      message:
+          '${to.name} is claimed by the ${claim.claimedByLayer.name} '
           'layer — ${from.name} (${fromLayer.name}) must access it through '
           'that layer, not directly.',
     );
@@ -184,7 +190,8 @@ ValidationResult validate({
         .join(', ');
     return result(
       severity: Severity.warning,
-      message: '${from.name} (${fromLayer.name}) depends on '
+      message:
+          '${from.name} (${fromLayer.name}) depends on '
           '${to.name} (${toLayer.name}) — skipping $skipped '
           '(no intermediate class wraps ${to.name} yet).',
     );

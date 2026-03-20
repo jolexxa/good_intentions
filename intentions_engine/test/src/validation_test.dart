@@ -8,13 +8,12 @@ void main() {
     Intention intention, [
     Set<String> deps = const {},
     String? owner,
-  ]) =>
-      AnnotatedClass(
-        name: name,
-        intention: intention,
-        dependencies: deps,
-        owner: owner,
-      );
+  ]) => AnnotatedClass(
+    name: name,
+    intention: intention,
+    dependencies: deps,
+    owner: owner,
+  );
 
   group('validate', () {
     group('model (cross-cutting)', () {
@@ -274,8 +273,7 @@ void main() {
         expect(result.message, contains('skipping viewModel, useCase'));
       });
 
-      test('info when intermediate class exists but does not wrap target',
-          () {
+      test('info when intermediate class exists but does not wrap target', () {
         final vm = ac('VM', Intention.viewModel, {'Api'});
         final uc = ac('UC', Intention.useCase); // no dep on Api
         final api = ac('Api', Intention.dataSource);

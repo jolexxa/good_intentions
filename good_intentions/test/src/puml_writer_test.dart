@@ -3,6 +3,12 @@ import 'package:intentions_engine/intentions_engine.dart';
 import 'package:test/test.dart';
 
 void main() {
+  late PumlWriter writer;
+
+  setUp(() {
+    writer = PumlWriter();
+  });
+
   group('PumlWriter', () {
     test('generates valid PlantUML for a simple graph', () {
       const repo = AnnotatedClass(
@@ -17,7 +23,7 @@ void main() {
       );
       final graph = DependencyGraph([repo, api]);
 
-      final puml = PumlWriter.write(graph, 'my_package');
+      final puml = writer.write(graph, 'my_package');
 
       expect(puml, contains('@startuml'));
       expect(puml, contains('@enduml'));
@@ -45,7 +51,7 @@ void main() {
       );
       final graph = DependencyGraph([user, repo, api]);
 
-      final puml = PumlWriter.write(graph, 'pkg');
+      final puml = writer.write(graph, 'pkg');
 
       expect(puml, isNot(contains('class User ')));
       expect(puml, isNot(contains('..>')));
@@ -65,7 +71,7 @@ void main() {
       );
       final graph = DependencyGraph([repo, api]);
 
-      final puml = PumlWriter.write(graph, 'pkg');
+      final puml = writer.write(graph, 'pkg');
 
       expect(puml, contains('Repo --> Api'));
       expect(puml, isNot(contains('NonExistent')));
@@ -89,7 +95,7 @@ void main() {
       );
       final graph = DependencyGraph([connected, api, isolated]);
 
-      final puml = PumlWriter.write(graph, 'pkg');
+      final puml = writer.write(graph, 'pkg');
 
       expect(puml, contains('class Repo << repository >>'));
       expect(puml, contains('class Api << dataSource >>'));
@@ -99,7 +105,7 @@ void main() {
     test('generates empty diagram for empty graph', () {
       final graph = DependencyGraph([]);
 
-      final puml = PumlWriter.write(graph, 'empty_pkg');
+      final puml = writer.write(graph, 'empty_pkg');
 
       expect(puml, contains('@startuml'));
       expect(puml, contains('@enduml'));
@@ -125,7 +131,7 @@ void main() {
       );
       final graph = DependencyGraph([cubit, logic, repo]);
 
-      final puml = PumlWriter.write(graph, 'pkg');
+      final puml = writer.write(graph, 'pkg');
 
       // ChatLogic should be inside a package with ChatCubit.
       expect(puml, contains('package "ChatCubit" as _ChatCubit'));
@@ -158,7 +164,7 @@ void main() {
       );
       final graph = DependencyGraph([logic, repo]);
 
-      final puml = PumlWriter.write(graph, 'pkg');
+      final puml = writer.write(graph, 'pkg');
 
       // Owner missing from graph — Orphan nests under NonExistent package
       // with fallback stereotype.
@@ -191,7 +197,7 @@ void main() {
       );
       final graph = DependencyGraph([root, mid, leaf, api]);
 
-      final puml = PumlWriter.write(graph, 'pkg');
+      final puml = writer.write(graph, 'pkg');
 
       // Both Mid and Leaf should be inside RootCubit's package.
       expect(puml, contains('package "RootCubit" as _RootCubit'));
@@ -216,7 +222,7 @@ void main() {
       );
       final graph = DependencyGraph([logic, api]);
 
-      final puml = PumlWriter.write(graph, 'pkg');
+      final puml = writer.write(graph, 'pkg');
 
       // No owner → renders flat, stereotype falls back to partOf.
       expect(puml, contains('class Detached << partOf >>'));
@@ -241,7 +247,7 @@ void main() {
       );
       final graph = DependencyGraph([api, cubit]);
 
-      final puml = PumlWriter.write(
+      final puml = writer.write(
         graph,
         'pkg',
         validationResults: [
@@ -276,7 +282,7 @@ void main() {
       );
       final graph = DependencyGraph([api, store, repo]);
 
-      final puml = PumlWriter.write(graph, 'pkg');
+      final puml = writer.write(graph, 'pkg');
 
       expect(puml, contains('Repo --> Api'));
       expect(puml, contains('Repo --> Store'));

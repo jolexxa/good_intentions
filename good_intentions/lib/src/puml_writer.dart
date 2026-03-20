@@ -3,12 +3,12 @@ import 'package:intentions_engine/intentions_engine.dart';
 
 /// Generates a PlantUML class diagram from a [DependencyGraph].
 @annotations.model
-abstract final class PumlWriter {
+class PumlWriter {
   /// Writes a PlantUML diagram for the given [graph] under [packageName].
   ///
   /// When [validationResults] are provided, error-severity edges are drawn
   /// in red. Results are keyed by (from, to) class names.
-  static String write(
+  String write(
     DependencyGraph graph,
     String packageName, {
     List<ValidationResult> validationResults = const [],
@@ -38,8 +38,8 @@ abstract final class PumlWriter {
     for (final ac in graph.classes) {
       if (!connected.contains(ac.name)) continue;
       if (ac.owner != null && ac.intention.isPartOf) {
-        final root = _resolveRootOwner(ac, graph);
-        (parts[root] ??= []).add(ac);
+        final rootName = _resolveRootOwner(ac, graph)?.name ?? ac.owner!;
+        (parts[rootName] ??= []).add(ac);
         owned.add(ac.name);
       }
     }
@@ -58,7 +58,7 @@ abstract final class PumlWriter {
       if (owned.contains(ac.name)) continue; // emitted inside owner rectangle
 
       final stereotype = ac.intention.isPartOf
-          ? _resolveOwnerIntention(ac, graph)?.name ?? ac.intention.name
+          ? _resolveRootOwner(ac, graph)?.intention.name ?? ac.intention.name
           : ac.intention.name;
 
       final children = parts[ac.name];
@@ -68,7 +68,6 @@ abstract final class PumlWriter {
         buffer.writeln('  class ${ac.name} << $stereotype >>');
       }
     }
-
     // Emit rectangles whose root owner is not in the graph (orphaned parts).
     final sortedPartKeys = parts.keys.toList()..sort();
     for (final key in sortedPartKeys) {
@@ -105,7 +104,7 @@ abstract final class PumlWriter {
 
   /// Writes a PlantUML package grouping an owner and its `@PartOf` children,
   /// with composition lines between the owner and each part.
-  static void _writePackage(
+  void _writePackage(
     StringBuffer buffer,
     String ownerName,
     String? ownerStereotype,
@@ -120,7 +119,8 @@ abstract final class PumlWriter {
       ..sort((a, b) => a.name.compareTo(b.name));
     for (final child in sortedChildren) {
       final childStereotype =
-          _resolveOwnerIntention(child, graph)?.name ?? child.intention.name;
+          _resolveRootOwner(child, graph)?.intention.name ??
+          child.intention.name;
       buffer.writeln('    class ${child.name} << $childStereotype >>');
       if (ownerStereotype != null) {
         buffer.writeln('    $ownerName +-- ${child.name}');
@@ -129,27 +129,12 @@ abstract final class PumlWriter {
     buffer.writeln('  }');
   }
 
-  /// Walks the `@partOf` owner chain to find the root owner's class name.
-  static String _resolveRootOwner(
-    AnnotatedClass ac,
-    DependencyGraph graph,
-  ) {
-    if (ac.owner == null) return ac.name;
-    final owner = graph[ac.owner!];
-    if (owner == null) return ac.owner!;
-    if (owner.intention.isPartOf) return _resolveRootOwner(owner, graph);
-    return owner.name;
-  }
-
-  /// Walks the `@partOf` owner chain to find the root owner's [Intention].
-  static Intention? _resolveOwnerIntention(
-    AnnotatedClass ac,
-    DependencyGraph graph,
-  ) {
+  /// Walks the `@partOf` owner chain to find the root owner.
+  AnnotatedClass? _resolveRootOwner(AnnotatedClass ac, DependencyGraph graph) {
     if (ac.owner == null) return null;
     final owner = graph[ac.owner!];
     if (owner == null) return null;
-    if (owner.intention.isPartOf) return _resolveOwnerIntention(owner, graph);
-    return owner.intention;
+    if (owner.intention.isPartOf) return _resolveRootOwner(owner, graph);
+    return owner;
   }
 }

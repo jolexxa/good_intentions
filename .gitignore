@@ -10,6 +10,9 @@ coverage/
 *.iml
 .vscode/
 
+# Agents
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,232 +1,162 @@
-import 'dart:io';
-
+import 'package:analyzer/file_system/file_system.dart';
 import 'package:good_intentions/good_intentions.dart';
 import 'package:intentions_engine/intentions_engine.dart';
-import 'package:path/path.dart' as p;
+import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 
-/// Creates a minimal package, runs `dart pub get`, returns the root path.
-Future<String> _createPackage(
-  Directory parent,
-  String packageName, {
-  Map<String, String> sources = const {},
-  Map<String, String> pathDeps = const {},
-}) async {
-  final root = Directory(p.join(parent.path, packageName))..createSync();
+class _MockAnalyzerAdapter extends Mock implements AnalyzerAdapter {}
 
-  final depLines = StringBuffer()
-    ..writeln('  intentions: ^0.1.0');
-  for (final entry in pathDeps.entries) {
-    depLines
-      ..writeln('  ${entry.key}:')
-      ..writeln('    path: ${entry.value}');
-  }
+class _MockResourceProvider extends Mock implements ResourceProvider {}
 
-  File(p.join(root.path, 'pubspec.yaml')).writeAsStringSync('''
-name: $packageName
-publish_to: none
-environment:
-  sdk: ^3.11.0
-dependencies:
-${depLines.toString().trimRight()}
-''');
+class _MockFolder extends Mock implements Folder {}
 
-  for (final entry in sources.entries) {
-    final file = File(p.join(root.path, entry.key));
-    file.parent.createSync(recursive: true);
-    file.writeAsStringSync(entry.value);
-  }
+const _basicCollection = CollectionResult(
+  classes: [
+    AnnotatedClass(
+      name: 'UserApi',
+      intention: Intention.dataSource,
+      dependencies: {},
+    ),
+    AnnotatedClass(
+      name: 'UserRepo',
+      intention: Intention.repository,
+      dependencies: {'UserApi'},
+    ),
+  ],
+  untagged: ['JustAClass'],
+);
 
-  final result = await Process.run(
-    'dart',
-    ['pub', 'get'],
-    workingDirectory: root.path,
-  );
-  if (result.exitCode != 0) {
-    throw StateError(
-      'dart pub get failed:\n${result.stdout}\n${result.stderr}',
-    );
-  }
+const _pathDepCollection = CollectionResult(
+  classes: [
+    AnnotatedClass(
+      name: 'MyRepo',
+      intention: Intention.repository,
+      dependencies: {'DepApi'},
+    ),
+    AnnotatedClass(
+      name: 'DepApi',
+      intention: Intention.dataSource,
+      dependencies: {},
+    ),
+  ],
+  untagged: [],
+);
 
-  return root.path;
-}
+const _partOfCollection = CollectionResult(
+  classes: [
+    AnnotatedClass(
+      name: 'MyOwner',
+      intention: Intention.useCase,
+      dependencies: {'MyHelper'},
+    ),
+    AnnotatedClass(
+      name: 'MyHelper',
+      intention: Intention.repository,
+      dependencies: {'ConfigApi'},
+      owner: 'MyOwner',
+    ),
+    AnnotatedClass(
+      name: 'ConfigApi',
+      intention: Intention.dataSource,
+      dependencies: {},
+    ),
+  ],
+  untagged: [],
+);
 
 void main() {
-  late Directory tmpDir;
+  late _MockAnalyzerAdapter mockAnalyzer;
+  late _MockResourceProvider mockProvider;
 
   setUp(() {
-    tmpDir = Directory.systemTemp.createTempSync('good_intentions_test_');
-  });
-
-  tearDown(() {
-    ClassCollector.collectOverride = null;
-    tmpDir.deleteSync(recursive: true);
+    mockAnalyzer = _MockAnalyzerAdapter();
+    mockProvider = _MockResourceProvider();
   });
 
   group('ClassCollector', () {
     test('collects annotated classes with dependencies from lib/', () async {
-      final root = await _createPackage(tmpDir, 'test_pkg', sources: {
-        'lib/src/user_api.dart': '''
-import 'package:intentions/intentions.dart';
+      final mockFolder = _MockFolder();
+      when(() => mockProvider.getFolder('/root/lib')).thenReturn(mockFolder);
+      when(() => mockFolder.exists).thenReturn(true);
+      when(
+        () => mockAnalyzer.analyze(any(), any()),
+      ).thenAnswer((_) async => _basicCollection);
 
-@dataSource
-class UserApi {
-  const UserApi();
-}
-''',
-        'lib/src/user_repo.dart': '''
-import 'package:intentions/intentions.dart';
-import 'package:test_pkg/src/user_api.dart';
+      final collector = ClassCollector(mockAnalyzer, mockProvider);
+      final result = await collector.collect('/root');
 
-@repository
-class UserRepo {
-  const UserRepo(this.api);
-  final UserApi api;
-}
-''',
-        'lib/src/plain.dart': '''
-class JustAClass {
-  const JustAClass();
-}
-
-abstract class AbstractThing {}
-
-interface class InterfaceThing {}
-''',
-      });
-
-      final (classes, untagged) = await ClassCollector.collect(root);
-
-      final names = classes.map((c) => c.name).toSet();
+      final names = result.classes.map((c) => c.name).toSet();
       expect(names, contains('UserApi'));
       expect(names, contains('UserRepo'));
 
-      final repo = classes.firstWhere((c) => c.name == 'UserRepo');
+      final repo = result.classes.firstWhere((c) => c.name == 'UserRepo');
       expect(repo.intention, Intention.repository);
       expect(repo.dependencies, contains('UserApi'));
+      expect(result.untagged, ['JustAClass']);
 
-      // Only concrete, non-abstract, non-interface classes are untagged.
-      expect(untagged, ['JustAClass']);
+      verify(() => mockAnalyzer.analyze('/root/lib', '/root')).called(1);
     });
 
     test('discovers annotated classes from path dependencies', () async {
-      final depRoot = await _createPackage(tmpDir, 'dep_pkg', sources: {
-        'lib/src/dep_api.dart': '''
-import 'package:intentions/intentions.dart';
+      final mockFolder = _MockFolder();
+      when(() => mockProvider.getFolder('/root/lib')).thenReturn(mockFolder);
+      when(() => mockFolder.exists).thenReturn(true);
+      when(
+        () => mockAnalyzer.analyze(any(), any()),
+      ).thenAnswer((_) async => _pathDepCollection);
 
-@dataSource
-class DepApi {
-  const DepApi();
-}
-''',
-      });
+      final collector = ClassCollector(mockAnalyzer, mockProvider);
+      final result = await collector.collect('/root');
 
-      final root = await _createPackage(
-        tmpDir,
-        'root_pkg',
-        sources: {
-          'lib/src/repo.dart': '''
-import 'package:intentions/intentions.dart';
-import 'package:dep_pkg/src/dep_api.dart';
-
-@repository
-class MyRepo {
-  const MyRepo(this.api);
-  final DepApi api;
-}
-''',
-        },
-        pathDeps: {'dep_pkg': depRoot},
-      );
-
-      final (classes, _) = await ClassCollector.collect(root);
-
-      final names = classes.map((c) => c.name).toSet();
+      final names = result.classes.map((c) => c.name).toSet();
       expect(names, contains('MyRepo'));
       expect(names, contains('DepApi'));
     });
 
     test('extracts @PartOf, dual annotations, and generic deps', () async {
-      final root = await _createPackage(tmpDir, 'test_pkg', sources: {
-        'lib/src/owner.dart': '''
-import 'package:intentions/intentions.dart';
-import 'package:test_pkg/src/helper.dart';
+      final mockFolder = _MockFolder();
+      when(() => mockProvider.getFolder('/root/lib')).thenReturn(mockFolder);
+      when(() => mockFolder.exists).thenReturn(true);
+      when(
+        () => mockAnalyzer.analyze(any(), any()),
+      ).thenAnswer((_) async => _partOfCollection);
 
-@useCase
-class MyOwner {
-  const MyOwner(this.helper);
-  final MyHelper helper;
-}
-''',
-        'lib/src/helper.dart': '''
-import 'package:intentions/intentions.dart';
-import 'package:test_pkg/src/owner.dart';
-import 'package:test_pkg/src/api.dart';
+      final collector = ClassCollector(mockAnalyzer, mockProvider);
+      final result = await collector.collect('/root');
 
-@repository
-@PartOf(MyOwner)
-class MyHelper {
-  const MyHelper(this.apis);
-  final Map<String, ConfigApi> apis;
-}
-''',
-        'lib/src/api.dart': '''
-import 'package:intentions/intentions.dart';
-
-@dataSource
-class ConfigApi {
-  const ConfigApi();
-}
-''',
-      });
-
-      final (classes, _) = await ClassCollector.collect(root);
-
-      final helper = classes.firstWhere((c) => c.name == 'MyHelper');
+      final helper = result.classes.firstWhere((c) => c.name == 'MyHelper');
       expect(helper.intention, Intention.repository);
       expect(helper.owner, 'MyOwner');
       expect(helper.dependencies, contains('ConfigApi'));
     });
 
     test('returns empty for package with no lib/ directory', () async {
-      final root = Directory(p.join(tmpDir.path, 'empty_pkg'))..createSync();
-      File(p.join(root.path, 'pubspec.yaml')).writeAsStringSync('''
-name: empty_pkg
-publish_to: none
-environment:
-  sdk: ^3.11.0
-dependencies:
-  intentions: ^0.1.0
-''');
-      await Process.run(
-        'dart',
-        ['pub', 'get'],
-        workingDirectory: root.path,
-      );
+      final mockFolder = _MockFolder();
+      when(() => mockProvider.getFolder('/root/lib')).thenReturn(mockFolder);
+      when(() => mockFolder.exists).thenReturn(false);
 
-      final (classes, untagged) = await ClassCollector.collect(root.path);
+      final collector = ClassCollector(mockAnalyzer, mockProvider);
+      final result = await collector.collect('/root');
 
-      expect(classes, isEmpty);
-      expect(untagged, isEmpty);
+      expect(result.classes, isEmpty);
+      expect(result.untagged, isEmpty);
+      verifyNever(() => mockAnalyzer.analyze(any(), any()));
     });
 
-    test('collectOverride bypasses analyzer', () async {
-      ClassCollector.collectOverride = (_) async => (
-            const [
-              AnnotatedClass(
-                name: 'Fake',
-                intention: Intention.model,
-                dependencies: {},
-              ),
-            ],
-            const <String>['FakeUntagged'],
-          );
+    test('always calls analyzer (no caching)', () async {
+      final mockFolder = _MockFolder();
+      when(() => mockProvider.getFolder('/root/lib')).thenReturn(mockFolder);
+      when(() => mockFolder.exists).thenReturn(true);
+      when(
+        () => mockAnalyzer.analyze(any(), any()),
+      ).thenAnswer((_) async => _basicCollection);
 
-      final (classes, untagged) =
-          await ClassCollector.collect('/nonexistent');
+      final collector = ClassCollector(mockAnalyzer, mockProvider);
 
-      expect(classes.single.name, 'Fake');
-      expect(untagged, ['FakeUntagged']);
+      await collector.collect('/root');
+      await collector.collect('/root');
+
+      verify(() => mockAnalyzer.analyze(any(), any())).called(2);
     });
   });
 }

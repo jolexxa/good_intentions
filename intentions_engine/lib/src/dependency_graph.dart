@@ -1,3 +1,4 @@
+import 'package:equatable/equatable.dart';
 import 'package:intentions/intentions.dart' as annotations;
 import 'package:intentions_engine/src/annotated_class.dart';
 import 'package:intentions_engine/src/layer.dart';
@@ -22,7 +23,7 @@ Layer? effectiveLayer(AnnotatedClass ac, DependencyGraph graph) {
 class DependencyGraph {
   /// Creates a dependency graph from a set of annotated classes.
   DependencyGraph(Iterable<AnnotatedClass> classes)
-      : _byName = {for (final c in classes) c.name: c};
+    : _byName = {for (final c in classes) c.name: c};
 
   final Map<String, AnnotatedClass> _byName;
 
@@ -80,7 +81,7 @@ class DependencyGraph {
 /// A class that has been claimed by a higher architectural layer.
 @immutable
 @annotations.model
-class ClaimedClass {
+class ClaimedClass with EquatableMixin {
   /// Creates a claimed class reference.
   const ClaimedClass(this.annotatedClass, this.claimedByLayer);
 
@@ -91,14 +92,7 @@ class ClaimedClass {
   final Layer claimedByLayer;
 
   @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ClaimedClass &&
-          runtimeType == other.runtimeType &&
-          annotatedClass == other.annotatedClass;
-
-  @override
-  int get hashCode => annotatedClass.hashCode;
+  List<Object?> get props => [annotatedClass];
 
   @override
   String toString() =>
