@@ -1,6 +1,14 @@
+// Static shims for testing
+// ignore_for_file: prefer_constructors_over_static_methods
+
 import 'dart:io';
 
+import 'package:analyzer/file_system/file_system.dart';
+import 'package:analyzer/file_system/physical_file_system.dart';
+import 'package:good_intentions/src/analyzer_adapter.dart';
 import 'package:good_intentions/src/class_collector.dart';
+import 'package:good_intentions/src/logger.dart';
+import 'package:good_intentions/src/package_file_resolver.dart';
 import 'package:good_intentions/src/puml_writer.dart';
 import 'package:good_intentions/src/validation_reporter.dart';
 import 'package:hooks/hooks.dart';
@@ -8,6 +16,14 @@ import 'package:intentions/intentions.dart' as annotations;
 import 'package:intentions_engine/intentions_engine.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
+
+/// Signature matching the [build] function from `package:hooks`.
+typedef BuildRunner =
+    Future<void> Function(
+      List<String> args,
+      Future<void> Function(BuildInput input, BuildOutputBuilder output)
+      builder,
+    );
 
 /// The result of analyzing a package's architecture.
 @annotations.model
@@ -44,127 +60,185 @@ class ArchitectureReport {
       results.where((r) => r.severity == Severity.error).toList();
 }
 
-/// Validates architecture of the current package from a build hook.
+/// Orchestrates architecture analysis, validation, and diagram generation.
 ///
-/// Usage in `hook/build.dart`:
-///
-/// ```dart
-/// import 'package:good_intentions/good_intentions.dart';
-///
-/// Future<void> main(List<String> args) async => validateArchitecture(args);
-/// ```
-///
-/// In test mode, pass [packageRoot] and [packageName] to bypass the hooks
-/// infrastructure and run validation directly.
-Future<void> validateArchitecture(
-  List<String> args, {
-  @visibleForTesting String? packageRoot,
-  @visibleForTesting String? packageName,
-}) async {
-  if (packageRoot != null && packageName != null) {
-    await _runValidation(packageRoot: packageRoot, packageName: packageName);
-    return;
-  }
-  // coverage:ignore-start
-  await build(args, (input, output) async {
-    await _runValidation(
-      packageRoot: Directory.fromUri(input.packageRoot).path,
-      packageName: input.packageName,
-    );
+/// All dependencies are injected via the constructor for testability.
+/// For build hooks, use the static [validate] entry point.
+@annotations.useCase
+class ArchitectureValidator {
+  /// Creates a validator with all required dependencies.
+  const ArchitectureValidator({
+    required this.resolver,
+    required this.collector,
+    required this.reporter,
+    required this.pumlWriter,
   });
-  // coverage:ignore-end
-}
 
-/// Core validation logic. Analyzes the package, reports results to [stderr],
-/// writes the PlantUML diagram, and throws [BuildError] on violations.
-Future<void> _runValidation({
-  required String packageRoot,
-  required String packageName,
-  @visibleForTesting StringSink? sink,
-}) async {
-  final out = sink ?? stderr
-    ..writeln()
-    ..writeln('[good_intentions] Validating architecture...');
-
-  final report = await analyzeArchitecture(
-    packageRoot: packageRoot,
-    packageName: packageName,
-  );
-
-  reportResults(report, out);
-
-  // Write PlantUML diagram.
-  final pumlFile = File(p.join(packageRoot, 'lib', 'architecture.g.puml'));
-  pumlFile.parent.createSync(recursive: true);
-  pumlFile.writeAsStringSync(report.puml);
-
-  if (report.hasErrors) {
-    throw BuildError(
-      message: '${report.errors.length} architecture violation(s) found.',
+  /// Creates a validator wired with production dependencies.
+  factory ArchitectureValidator.withDefaults({
+    required ResourceProvider resourceProvider,
+  }) {
+    final resolver = PackageFileResolver(resourceProvider);
+    return ArchitectureValidator(
+      resolver: resolver,
+      collector: ClassCollector(
+        AnalyzerAdapter(resolver, resourceProvider),
+        resourceProvider,
+      ),
+      reporter: ValidationReporter(),
+      pumlWriter: PumlWriter(),
     );
   }
 
-  out.writeln('[good_intentions] Architecture OK.');
+  // -- Static shims for testability -----------------------------------------
+
+  /// Factory for creating an [ArchitectureValidator].
+  ///
+  /// Defaults to [ArchitectureValidator.withDefaults] with
+  /// [PhysicalResourceProvider.INSTANCE]. Swap in tests to return a mock.
+  @visibleForTesting
+  static ArchitectureValidator Function() createValidator =
+      defaultCreateValidator;
+
+  /// Production factory for [createValidator].
+  ///
+  /// Exposed so tests can restore the default in tearDown.
+  static ArchitectureValidator defaultCreateValidator() =>
+      ArchitectureValidator.withDefaults(
+        resourceProvider: PhysicalResourceProvider.INSTANCE,
+      );
+
+  /// The build runner used by [validate].
+  ///
+  /// Defaults to [build] from `package:hooks`. Swap in tests to
+  /// call the callback with a constructed [BuildInput].
+  @visibleForTesting
+  static BuildRunner buildRunner = build;
+
+  /// The default [buildRunner] value.
+  ///
+  /// Exposed so tests can restore the default in tearDown.
+  static const BuildRunner defaultBuildRunner = build;
+
+  // -- Instance fields ------------------------------------------------------
+
+  /// The resolver for reading package names and tracking files.
+  final PackageFileResolver resolver;
+
+  /// The class collector for discovering annotated classes.
+  final ClassCollector collector;
+
+  /// The validation reporter for checking dependency rules.
+  final ValidationReporter reporter;
+
+  /// The PlantUML writer for generating diagrams.
+  final PumlWriter pumlWriter;
+
+  // -- Static entry point ---------------------------------------------------
+
+  /// Validates architecture of the current package from a build hook.
+  ///
+  /// Usage in `hook/build.dart`:
+  ///
+  /// ```dart
+  /// import 'package:good_intentions/good_intentions.dart';
+  ///
+  /// Future<void> main(List<String> args) async =>
+  ///     ArchitectureValidator.validate(args);
+  /// ```
+  static Future<void> validate(List<String> args) async {
+    await buildRunner(args, (input, output) async {
+      final root = Directory.fromUri(input.packageRoot).path;
+      final validator = createValidator();
+
+      output.dependencies.addAll(validator.resolver.trackedFiles(root));
+
+      await validator.validatePackage(
+        packageRoot: root,
+        packageName: input.packageName,
+        logger: Logger(stderr),
+      );
+    });
+  }
+
+  // -- Instance methods -----------------------------------------------------
+
+  /// Analyzes the architecture of the package at [packageRoot].
+  ///
+  /// Returns an [ArchitectureReport] containing all discovered classes,
+  /// validation results, and a PlantUML diagram.
+  Future<ArchitectureReport> analyze({
+    required String packageRoot,
+    String? packageName,
+  }) async {
+    final name = packageName ?? resolver.readPackageName(packageRoot);
+    final collection = await collector.collect(packageRoot);
+    final graph = DependencyGraph(collection.classes);
+    final results = reporter.validateAll(graph);
+    final puml = pumlWriter.write(
+      graph,
+      name,
+      validationResults: results,
+    );
+
+    return ArchitectureReport(
+      classes: collection.classes,
+      untagged: collection.untagged,
+      graph: graph,
+      results: results,
+      puml: puml,
+    );
+  }
+
+  /// Runs full validation: analyzes, reports results, writes the PlantUML
+  /// diagram, and throws [BuildError] on violations.
+  Future<void> validatePackage({
+    required String packageRoot,
+    required String packageName,
+    required Logger logger,
+  }) async {
+    logger
+      ..info('')
+      ..info('Validating architecture...');
+
+    final report = await analyze(
+      packageRoot: packageRoot,
+      packageName: packageName,
+    );
+
+    reportResults(report, logger);
+
+    // Write PlantUML diagram.
+    final pumlPath = p.join(packageRoot, 'lib', 'architecture.g.puml');
+    final pumlFile = resolver.resourceProvider.getFile(pumlPath);
+    pumlFile.parent.create();
+    pumlFile.writeAsStringSync(report.puml);
+
+    if (report.hasErrors) {
+      throw BuildError(
+        message: '${report.errors.length} architecture violation(s) found.',
+      );
+    }
+
+    logger.info('Architecture OK.');
+  }
 }
 
-/// Analyzes the architecture of the package at [packageRoot].
-///
-/// Returns an [ArchitectureReport] containing all discovered classes,
-/// validation results, and a PlantUML diagram.
-Future<ArchitectureReport> analyzeArchitecture({
-  required String packageRoot,
-  String? packageName,
-}) async {
-  final name =
-      packageName ?? _readPackageName(packageRoot);
-  final (classes, untagged) = await ClassCollector.collect(packageRoot);
-  final graph = DependencyGraph(classes);
-  final results = ValidationReporter.validateAll(graph);
-  final puml = PumlWriter.write(
-    graph,
-    name,
-    validationResults: results,
-  );
-
-  return ArchitectureReport(
-    classes: classes,
-    untagged: untagged,
-    graph: graph,
-    results: results,
-    puml: puml,
-  );
-}
-
-/// Writes validation results and untagged warnings to [sink].
-void reportResults(ArchitectureReport report, StringSink sink) {
+/// Writes validation results and untagged warnings to [logger].
+void reportResults(ArchitectureReport report, Logger logger) {
   for (final name in report.untagged) {
-    sink.writeln('[!] $name has no intention annotation.');
+    logger.warn('$name has no intention annotation.');
   }
   for (final r in report.results) {
     switch (r.severity) {
       case Severity.error:
-        sink.writeln('[ERROR] ${r.message}');
+        logger.error(r.message);
       case Severity.warning:
-        sink.writeln('[WARN] ${r.message}');
+        logger.warn(r.message);
       case Severity.info:
-        sink.writeln('[INFO] ${r.message}');
+        logger.info(r.message);
       case Severity.ok:
         break;
     }
   }
-}
-
-/// Reads the package name from the `pubspec.yaml` at [packageRoot].
-String _readPackageName(String packageRoot) {
-  final pubspec =
-      File(p.join(packageRoot, 'pubspec.yaml')).readAsStringSync();
-  final match =
-      RegExp(r'^name:\s*(\S+)', multiLine: true).firstMatch(pubspec);
-  if (match == null) {
-    throw StateError(
-      'Could not determine package name from '
-      '${p.join(packageRoot, 'pubspec.yaml')}',
-    );
-  }
-  return match.group(1)!;
 }

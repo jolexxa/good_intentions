@@ -12,6 +12,7 @@ environment:
   sdk: ^3.11.0
 
 dependencies:
+  equatable: ^2.0.8
   intentions: ^0.1.0
   meta: ^1.18.0
 
