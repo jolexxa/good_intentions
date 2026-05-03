@@ -8,6 +8,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/file_system/file_system.dart';
 import 'package:analyzer/file_system/memory_file_system.dart';
+import 'package:analyzer/source/source.dart';
 import 'package:good_intentions/good_intentions.dart';
 import 'package:intentions_engine/intentions_engine.dart';
 import 'package:mocktail/mocktail.dart';
@@ -30,6 +31,10 @@ class _MockLibrary extends Mock implements LibraryElement {}
 class _MockLibraryFragment extends Mock implements LibraryFragment {}
 
 class _MockClass extends Mock implements ClassElement {}
+
+class _MockClassFragment extends Mock implements ClassFragment {}
+
+class _MockSource extends Mock implements Source {}
 
 class _MockConstructor extends Mock implements ConstructorElement {}
 
@@ -64,12 +69,22 @@ _MockClass _buildMockClass(
   List<FormalParameterElement> constructorParams = const [],
   List<FieldElement> fields = const [],
   String? partOfOwner,
+  String sourceFullName = '/root/lib/test.dart',
 }) {
   final cls = _MockClass();
   when(() => cls.name).thenReturn(name);
   when(() => cls.isPrivate).thenReturn(isPrivate);
   when(() => cls.isAbstract).thenReturn(isAbstract);
   when(() => cls.isInterface).thenReturn(isInterface);
+
+  // Source location (for the generated-file filter).
+  final classFragment = _MockClassFragment();
+  final libFragment = _MockLibraryFragment();
+  final source = _MockSource();
+  when(() => cls.firstFragment).thenReturn(classFragment);
+  when(() => classFragment.libraryFragment).thenReturn(libFragment);
+  when(() => libFragment.source).thenReturn(source);
+  when(() => source.fullName).thenReturn(sourceFullName);
 
   // Constructors.
   if (constructorParams.isNotEmpty) {
@@ -343,6 +358,70 @@ void main() {
       final result = await adapter.analyze('/root/lib', '/root');
 
       expect(result.classes, isEmpty);
+    });
+
+    test('skips generated files in phase 1', () async {
+      when(() => mockResolver.readPackageName('/root')).thenReturn('test_pkg');
+
+      // The generated file would resolve, but we should never ask for it.
+      final lib = _buildMockLibrary(
+        uri: Uri.parse('package:test_pkg/a.mocks.dart'),
+        classes: [_buildMockClass('MockThing')],
+      );
+      final unit = _buildMockUnitResult(lib);
+
+      final chain = _buildMockAnalyzerChain(
+        analyzedFiles: ['/root/lib/src/a.mocks.dart'],
+        unitResults: {'/root/lib/src/a.mocks.dart': unit},
+      );
+      AnalyzerAdapter.createCollection =
+          ({
+            required includedPaths,
+            required resourceProvider,
+            sdkPath,
+          }) => chain.collection;
+
+      final result = await adapter.analyze('/root/lib', '/root');
+
+      expect(result.classes, isEmpty);
+      expect(result.untagged, isEmpty);
+    });
+
+    test('skips classes from generated part files', () async {
+      when(() => mockResolver.readPackageName('/root')).thenReturn('test_pkg');
+
+      // Parent library has a hand-written class and a class declared in a
+      // generated part (e.g. `*.mapper.dart`).
+      final handWritten = _buildMockClass(
+        'User',
+        annotationTypeName: 'Model',
+        sourceFullName: '/root/lib/src/user.dart',
+      );
+      final generated = _buildMockClass(
+        'UserMapper',
+        sourceFullName: '/root/lib/src/user.mapper.dart',
+      );
+      final lib = _buildMockLibrary(
+        uri: Uri.parse('package:test_pkg/user.dart'),
+        classes: [handWritten, generated],
+      );
+      final unit = _buildMockUnitResult(lib);
+
+      final chain = _buildMockAnalyzerChain(
+        analyzedFiles: ['/root/lib/src/user.dart'],
+        unitResults: {'/root/lib/src/user.dart': unit},
+      );
+      AnalyzerAdapter.createCollection =
+          ({
+            required includedPaths,
+            required resourceProvider,
+            sdkPath,
+          }) => chain.collection;
+
+      final result = await adapter.analyze('/root/lib', '/root');
+
+      expect(result.classes.map((c) => c.name), ['User']);
+      expect(result.untagged, isEmpty);
     });
 
     test('skips private classes', () async {
@@ -783,6 +862,24 @@ void main() {
       await adapter.analyze('/root/lib', '/root');
 
       expect(receivedProvider, same(mockProvider));
+    });
+  });
+
+  group('isGeneratedDartFile', () {
+    test('flags common code-gen patterns', () {
+      expect(isGeneratedDartFile('lib/foo.g.dart'), isTrue);
+      expect(isGeneratedDartFile('lib/foo.freezed.dart'), isTrue);
+      expect(isGeneratedDartFile('lib/foo.mocks.dart'), isTrue);
+      expect(isGeneratedDartFile('lib/foo.mapper.dart'), isTrue);
+      expect(isGeneratedDartFile('/abs/path/foo.config.dart'), isTrue);
+      expect(isGeneratedDartFile(r'C:\proj\lib\foo.gr.dart'), isTrue);
+    });
+
+    test('leaves hand-written files alone', () {
+      expect(isGeneratedDartFile('lib/foo.dart'), isFalse);
+      expect(isGeneratedDartFile('lib/src/user_repo.dart'), isFalse);
+      expect(isGeneratedDartFile('foo.txt'), isFalse);
+      expect(isGeneratedDartFile('foo.g.txt'), isFalse);
     });
   });
 }
