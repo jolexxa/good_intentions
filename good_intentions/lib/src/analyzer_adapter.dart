@@ -18,6 +18,19 @@ import 'package:meta/meta.dart';
 /// Intentions package URI prefix.
 const String _intentionsPackage = 'package:intentions/';
 
+/// Whether [path] looks like a code-generated Dart file.
+///
+/// Generators follow the convention `name.tag.dart` (e.g. `foo.g.dart`,
+/// `foo.freezed.dart`, `foo.mocks.dart`, `foo.mapper.dart`). Hand-written
+/// files are just `name.dart`.
+@visibleForTesting
+bool isGeneratedDartFile(String path) {
+  final slash = path.lastIndexOf(RegExp(r'[/\\]'));
+  final base = slash == -1 ? path : path.substring(slash + 1);
+  if (!base.endsWith('.dart')) return false;
+  return '.'.allMatches(base).length >= 2;
+}
+
 /// Wraps the Dart analyzer to discover annotated classes in a package.
 ///
 /// Uses a static [createCollection] shim so tests can swap in a mock
@@ -93,6 +106,7 @@ class AnalyzerAdapter {
     for (final context in collection.contexts) {
       for (final filePath in context.contextRoot.analyzedFiles()) {
         if (!filePath.endsWith('.dart')) continue;
+        if (isGeneratedDartFile(filePath)) continue;
 
         final unitResult = await context.currentSession.getResolvedUnit(
           filePath,
@@ -170,6 +184,11 @@ class AnalyzerAdapter {
   }) {
     for (final classElem in library.classes) {
       if (classElem.isPrivate) continue;
+
+      // Skip classes declared in generated part files (e.g. `*.freezed.dart`,
+      // `*.mapper.dart`) since the developer didn't write them.
+      final source = classElem.firstFragment.libraryFragment.source.fullName;
+      if (isGeneratedDartFile(source)) continue;
 
       final name = classElem.name;
       if (name == null) continue;
