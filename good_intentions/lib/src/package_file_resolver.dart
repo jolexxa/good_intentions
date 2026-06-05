@@ -37,10 +37,11 @@ class PackageFileResolver {
   ///
   /// Tracked files (sorted by path for determinism):
   ///   1. All `.dart` files in `packageRoot/lib/`
-  ///   2. `pubspec.lock` (hosted dependency versions)
-  ///   3. `pubspec.yaml` of every path dependency (detects when
+  ///   2. The resolved `.dart_tool/package_config.json`
+  ///   3. `pubspec.lock` next to the resolved `.dart_tool/`
+  ///   4. `pubspec.yaml` of every path dependency (detects when
   ///      `intentions` is added or removed)
-  ///   4. All `.dart` files in `lib/` of path deps that use `intentions`
+  ///   5. All `.dart` files in `lib/` of path deps that use `intentions`
   List<String> _trackedFilePaths(String packageRoot) {
     final paths = <String>[];
 
@@ -52,15 +53,20 @@ class PackageFileResolver {
       }
     }
 
-    // 2. pubspec.lock.
-    final lockFile = resourceProvider.getFile(
-      p.join(packageRoot, 'pubspec.lock'),
-    );
-    if (lockFile.exists) {
-      paths.add(lockFile.path);
+    // 2 & 3. Package resolution files.
+    final packageConfigFile = _findPackageConfig(packageRoot);
+    if (packageConfigFile != null) {
+      paths.add(packageConfigFile.path);
+
+      final lockFile = resourceProvider.getFile(
+        p.join(packageConfigFile.parent.parent.path, 'pubspec.lock'),
+      );
+      if (lockFile.exists) {
+        paths.add(lockFile.path);
+      }
     }
 
-    // 3 & 4. Path dependency pubspecs and their dart sources.
+    // 4 & 5. Path dependency pubspecs and their dart sources.
     final packageConfig = readPackageConfig(packageRoot);
     final depCache = <String, bool>{};
 
@@ -131,16 +137,14 @@ class PackageFileResolver {
   /// Reads `.dart_tool/package_config.json` and returns a map of
   /// package name → resolved root path.
   Map<String, String> readPackageConfig(String packageRoot) {
-    final configFile = resourceProvider.getFile(
-      p.join(packageRoot, '.dart_tool', 'package_config.json'),
-    );
-    if (!configFile.exists) return {};
+    final configFile = _findPackageConfig(packageRoot);
+    if (configFile == null) return {};
 
     final json =
         jsonDecode(configFile.readAsStringSync()) as Map<String, dynamic>;
     final packages = json['packages'] as List<dynamic>;
     final result = <String, String>{};
-    final configDir = p.join(packageRoot, '.dart_tool');
+    final configDir = configFile.parent.path;
 
     for (final pkg in packages) {
       final map = pkg as Map<String, dynamic>;
@@ -156,6 +160,26 @@ class PackageFileResolver {
     }
 
     return result;
+  }
+
+  /// Finds the nearest package config visible from [packageRoot].
+  ///
+  /// Normal packages have `.dart_tool/package_config.json` directly under
+  /// [packageRoot]. Pub workspaces keep one shared config at the workspace
+  /// root, so workspace packages need to walk upward to find it.
+  File? _findPackageConfig(String packageRoot) {
+    var current = p.normalize(packageRoot);
+
+    while (true) {
+      final configFile = resourceProvider.getFile(
+        p.join(current, '.dart_tool', 'package_config.json'),
+      );
+      if (configFile.exists) return configFile;
+
+      final parent = p.dirname(current);
+      if (parent == current) return null;
+      current = parent;
+    }
   }
 
   /// Returns `true` if [packageName] is a local path dependency whose

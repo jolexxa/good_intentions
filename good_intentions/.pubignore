@@ -1,5 +1,7 @@
 # Tests
 test/
+e2e_scenario/
+e2e_scenario_workspace/
 
 # Coverage
 coverage/

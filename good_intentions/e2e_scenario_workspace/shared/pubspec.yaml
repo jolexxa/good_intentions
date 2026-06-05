@@ -1,0 +1,10 @@
+name: shared
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  intentions:
+    path: ../../../../intentions

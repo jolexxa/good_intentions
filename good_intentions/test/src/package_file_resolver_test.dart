@@ -29,12 +29,50 @@ void main() {
     test('includes pubspec.lock', () {
       mem
         ..newFile('/root/lib/src/a.dart', 'class A {}')
+        ..newFile(
+          '/root/.dart_tool/package_config.json',
+          jsonEncode({'packages': <Map<String, Object?>>[]}),
+        )
         ..newFile('/root/pubspec.lock', 'lock content');
 
       final uris = resolver.trackedFiles('/root');
       final paths = uris.map((u) => u.toFilePath()).toList();
 
       expect(paths, anyElement(endsWith('pubspec.lock')));
+    });
+
+    test('includes discovered package_config.json', () {
+      mem
+        ..newFile('/root/lib/src/a.dart', 'class A {}')
+        ..newFile(
+          '/root/.dart_tool/package_config.json',
+          jsonEncode({'packages': <Map<String, Object?>>[]}),
+        );
+
+      final uris = resolver.trackedFiles('/root');
+      final paths = uris.map((u) => u.toFilePath()).toList();
+
+      expect(paths, anyElement(endsWith('package_config.json')));
+    });
+
+    test('includes workspace pubspec.lock from package config root', () {
+      mem
+        ..newFile('/workspace/packages/app/lib/src/a.dart', 'class A {}')
+        ..newFile(
+          '/workspace/.dart_tool/package_config.json',
+          jsonEncode({'packages': <Map<String, Object?>>[]}),
+        )
+        ..newFile('/workspace/pubspec.lock', 'lock content')
+        ..newFile(
+          '/workspace/packages/app/pubspec.lock',
+          'stray lock content',
+        );
+
+      final uris = resolver.trackedFiles('/workspace/packages/app');
+      final paths = uris.map((u) => u.toFilePath()).toList();
+
+      expect(paths, contains('/workspace/pubspec.lock'));
+      expect(paths, isNot(contains('/workspace/packages/app/pubspec.lock')));
     });
 
     test('includes path dep pubspec.yaml', () {
@@ -165,6 +203,62 @@ void main() {
       expect(config, contains('my_pkg'));
       expect(config, contains('dep'));
       expect(config['my_pkg'], '/my_pkg');
+    });
+
+    test('finds workspace package_config.json above package root', () {
+      mem.newFile(
+        '/workspace/.dart_tool/package_config.json',
+        jsonEncode({
+          'packages': [
+            {'name': 'app', 'rootUri': '../packages/app'},
+            {'name': 'shared', 'rootUri': '../packages/shared'},
+          ],
+        }),
+      );
+
+      final config = resolver.readPackageConfig('/workspace/packages/app');
+
+      expect(config['app'], '/workspace/packages/app');
+      expect(config['shared'], '/workspace/packages/shared');
+    });
+
+    test('resolves relative rootUri from discovered .dart_tool directory', () {
+      mem.newFile(
+        '/workspace/.dart_tool/package_config.json',
+        jsonEncode({
+          'packages': [
+            {'name': 'dep', 'rootUri': '../deps/dep'},
+          ],
+        }),
+      );
+
+      final config = resolver.readPackageConfig('/workspace/packages/app');
+
+      expect(config['dep'], '/workspace/deps/dep');
+    });
+
+    test('prefers package-local package_config.json', () {
+      mem
+        ..newFile(
+          '/workspace/.dart_tool/package_config.json',
+          jsonEncode({
+            'packages': [
+              {'name': 'dep', 'rootUri': '../workspace_dep'},
+            ],
+          }),
+        )
+        ..newFile(
+          '/workspace/packages/app/.dart_tool/package_config.json',
+          jsonEncode({
+            'packages': [
+              {'name': 'dep', 'rootUri': '../app_dep'},
+            ],
+          }),
+        );
+
+      final config = resolver.readPackageConfig('/workspace/packages/app');
+
+      expect(config['dep'], '/workspace/packages/app/app_dep');
     });
   });
 

@@ -66,8 +66,9 @@ class ClassCollector {
   /// Scans all `.dart` files in `lib/` and walks transitive imports to
   /// discover annotated classes in dependency packages.
   ///
-  /// [packageRoot] is the absolute path to the package directory (must
-  /// contain `pubspec.yaml` and `.dart_tool/package_config.json`).
+  /// [packageRoot] is the absolute path to the package directory. Its
+  /// `.dart_tool/package_config.json` can live under [packageRoot] or, for
+  /// Pub workspaces, under a parent workspace root.
   Future<CollectionResult> collect(String packageRoot) async {
     final libDir = p.join(packageRoot, 'lib');
     if (!resourceProvider.getFolder(libDir).exists) {

@@ -1,0 +1,11 @@
+name: app
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  intentions:
+    path: ../../../../intentions
+  shared:
+    path: ../shared
