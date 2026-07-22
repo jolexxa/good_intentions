@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:analyzer/file_system/memory_file_system.dart';
 import 'package:good_intentions/good_intentions.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
@@ -9,7 +10,7 @@ void main() {
   late PackageFileResolver resolver;
 
   setUp(() {
-    mem = MemoryResourceProvider();
+    mem = MemoryResourceProvider(context: p.Context(style: p.Style.posix));
     resolver = PackageFileResolver(mem);
   });
 
@@ -20,7 +21,7 @@ void main() {
         ..newFile('/root/lib/src/b.dart', 'class B {}');
 
       final uris = resolver.trackedFiles('/root');
-      final paths = uris.map((u) => u.toFilePath()).toList();
+      final paths = uris.map(mem.pathContext.fromUri).toList();
 
       expect(paths, anyElement(endsWith('lib/src/a.dart')));
       expect(paths, anyElement(endsWith('lib/src/b.dart')));
@@ -36,7 +37,7 @@ void main() {
         ..newFile('/root/pubspec.lock', 'lock content');
 
       final uris = resolver.trackedFiles('/root');
-      final paths = uris.map((u) => u.toFilePath()).toList();
+      final paths = uris.map(mem.pathContext.fromUri).toList();
 
       expect(paths, anyElement(endsWith('pubspec.lock')));
     });
@@ -50,7 +51,7 @@ void main() {
         );
 
       final uris = resolver.trackedFiles('/root');
-      final paths = uris.map((u) => u.toFilePath()).toList();
+      final paths = uris.map(mem.pathContext.fromUri).toList();
 
       expect(paths, anyElement(endsWith('package_config.json')));
     });
@@ -69,7 +70,7 @@ void main() {
         );
 
       final uris = resolver.trackedFiles('/workspace/packages/app');
-      final paths = uris.map((u) => u.toFilePath()).toList();
+      final paths = uris.map(mem.pathContext.fromUri).toList();
 
       expect(paths, contains('/workspace/pubspec.lock'));
       expect(paths, isNot(contains('/workspace/packages/app/pubspec.lock')));
@@ -89,7 +90,7 @@ void main() {
         );
 
       final uris = resolver.trackedFiles('/root');
-      final paths = uris.map((u) => u.toFilePath()).toList();
+      final paths = uris.map(mem.pathContext.fromUri).toList();
 
       expect(
         paths,
@@ -115,7 +116,7 @@ void main() {
         );
 
       final uris = resolver.trackedFiles('/root');
-      final paths = uris.map((u) => u.toFilePath()).toList();
+      final paths = uris.map(mem.pathContext.fromUri).toList();
 
       expect(
         paths,
@@ -129,7 +130,7 @@ void main() {
         ..newFile('/root/lib/readme.txt', 'hello');
 
       final uris = resolver.trackedFiles('/root');
-      final paths = uris.map((u) => u.toFilePath()).toList();
+      final paths = uris.map(mem.pathContext.fromUri).toList();
 
       expect(paths, isNot(anyElement(endsWith('.txt'))));
     });
@@ -154,7 +155,7 @@ void main() {
         );
 
       final uris = resolver.trackedFiles('/root');
-      final paths = uris.map((u) => u.toFilePath()).toList();
+      final paths = uris.map(mem.pathContext.fromUri).toList();
 
       expect(paths, isNot(anyElement(contains('.pub-cache'))));
     });

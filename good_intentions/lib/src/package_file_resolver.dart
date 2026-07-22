@@ -17,6 +17,10 @@ class PackageFileResolver {
   /// The file system abstraction used for all file operations.
   final ResourceProvider resourceProvider;
 
+  /// Path semantics of [resourceProvider], which are not necessarily those
+  /// of the host.
+  p.Context get _paths => resourceProvider.pathContext;
+
   /// Hosted packages live in `.pub-cache` — we skip them during dependency
   /// tracking since we only enforce intentions on the user's own code.
   @visibleForTesting
@@ -31,7 +35,7 @@ class PackageFileResolver {
   /// `output.dependencies.addAll(...)` so the build system knows when to
   /// re-run the hook.
   List<Uri> trackedFiles(String packageRoot) =>
-      _trackedFilePaths(packageRoot).map(p.toUri).toList();
+      _trackedFilePaths(packageRoot).map(_paths.toUri).toList();
 
   /// Single source of truth for which file paths matter.
   ///
@@ -46,7 +50,9 @@ class PackageFileResolver {
     final paths = <String>[];
 
     // 1. All .dart files in lib/.
-    final libFolder = resourceProvider.getFolder(p.join(packageRoot, 'lib'));
+    final libFolder = resourceProvider.getFolder(
+      _paths.join(packageRoot, 'lib'),
+    );
     if (libFolder.exists) {
       for (final file in _dartFilesIn(libFolder)) {
         paths.add(file.path);
@@ -59,7 +65,7 @@ class PackageFileResolver {
       paths.add(packageConfigFile.path);
 
       final lockFile = resourceProvider.getFile(
-        p.join(packageConfigFile.parent.parent.path, 'pubspec.lock'),
+        _paths.join(packageConfigFile.parent.parent.path, 'pubspec.lock'),
       );
       if (lockFile.exists) {
         paths.add(lockFile.path);
@@ -77,14 +83,14 @@ class PackageFileResolver {
       if (rootPath.contains(pubCacheSegment)) continue;
 
       final depPubspec = resourceProvider.getFile(
-        p.join(rootPath, 'pubspec.yaml'),
+        _paths.join(rootPath, 'pubspec.yaml'),
       );
       if (depPubspec.exists) {
         paths.add(depPubspec.path);
       }
 
       if (isIntentionsPathDep(pkgName, packageConfig, depCache)) {
-        final depLib = resourceProvider.getFolder(p.join(rootPath, 'lib'));
+        final depLib = resourceProvider.getFolder(_paths.join(rootPath, 'lib'));
         if (depLib.exists) {
           for (final file in _dartFilesIn(depLib)) {
             paths.add(file.path);
@@ -119,7 +125,7 @@ class PackageFileResolver {
   /// Reads the package name from the `pubspec.yaml` at [packageRoot].
   String readPackageName(String packageRoot) {
     final pubspec = resourceProvider
-        .getFile(p.join(packageRoot, 'pubspec.yaml'))
+        .getFile(_paths.join(packageRoot, 'pubspec.yaml'))
         .readAsStringSync();
     final match = RegExp(
       r'^name:\s*(\S+)',
@@ -128,7 +134,7 @@ class PackageFileResolver {
     if (match == null) {
       throw StateError(
         'Could not determine package name from '
-        '${p.join(packageRoot, 'pubspec.yaml')}',
+        '${_paths.join(packageRoot, 'pubspec.yaml')}',
       );
     }
     return match.group(1)!;
@@ -153,8 +159,8 @@ class PackageFileResolver {
 
       // Resolve rootUri relative to the package_config.json directory.
       final resolvedRoot = rootUri.startsWith('file://')
-          ? Uri.parse(rootUri).toFilePath()
-          : p.normalize(p.join(configDir, rootUri));
+          ? _paths.fromUri(Uri.parse(rootUri))
+          : _paths.normalize(_paths.join(configDir, rootUri));
 
       result[name] = resolvedRoot;
     }
@@ -168,15 +174,15 @@ class PackageFileResolver {
   /// [packageRoot]. Pub workspaces keep one shared config at the workspace
   /// root, so workspace packages need to walk upward to find it.
   File? _findPackageConfig(String packageRoot) {
-    var current = p.normalize(packageRoot);
+    var current = _paths.normalize(packageRoot);
 
     while (true) {
       final configFile = resourceProvider.getFile(
-        p.join(current, '.dart_tool', 'package_config.json'),
+        _paths.join(current, '.dart_tool', 'package_config.json'),
       );
       if (configFile.exists) return configFile;
 
-      final parent = p.dirname(current);
+      final parent = _paths.dirname(current);
       if (parent == current) return null;
       current = parent;
     }
@@ -203,7 +209,7 @@ class PackageFileResolver {
       result = false;
     } else {
       final pubspecFile = resourceProvider.getFile(
-        p.join(rootPath, 'pubspec.yaml'),
+        _paths.join(rootPath, 'pubspec.yaml'),
       );
       if (!pubspecFile.exists) {
         result = false;

@@ -2,7 +2,6 @@ import 'package:analyzer/file_system/file_system.dart';
 import 'package:good_intentions/src/analyzer_adapter.dart';
 import 'package:intentions/intentions.dart' as annotations;
 import 'package:intentions_engine/intentions_engine.dart';
-import 'package:path/path.dart' as p;
 
 /// The result of extracting an intention annotation from a class element.
 @annotations.model
@@ -70,7 +69,7 @@ class ClassCollector {
   /// `.dart_tool/package_config.json` can live under [packageRoot] or, for
   /// Pub workspaces, under a parent workspace root.
   Future<CollectionResult> collect(String packageRoot) async {
-    final libDir = p.join(packageRoot, 'lib');
+    final libDir = resourceProvider.pathContext.join(packageRoot, 'lib');
     if (!resourceProvider.getFolder(libDir).exists) {
       return const CollectionResult(
         classes: <AnnotatedClass>[],

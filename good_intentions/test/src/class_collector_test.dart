@@ -2,6 +2,7 @@ import 'package:analyzer/file_system/file_system.dart';
 import 'package:good_intentions/good_intentions.dart';
 import 'package:intentions_engine/intentions_engine.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 class _MockAnalyzerAdapter extends Mock implements AnalyzerAdapter {}
@@ -71,6 +72,11 @@ void main() {
   setUp(() {
     mockAnalyzer = _MockAnalyzerAdapter();
     mockProvider = _MockResourceProvider();
+    // Fixtures below are written as POSIX paths, so the provider has to
+    // agree regardless of the host the suite runs on.
+    when(
+      () => mockProvider.pathContext,
+    ).thenReturn(p.Context(style: p.Style.posix));
   });
 
   group('ClassCollector', () {
