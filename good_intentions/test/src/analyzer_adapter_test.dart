@@ -12,6 +12,7 @@ import 'package:analyzer/source/source.dart';
 import 'package:good_intentions/good_intentions.dart';
 import 'package:intentions_engine/intentions_engine.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 // -- Mock classes -----------------------------------------------------------
@@ -43,6 +44,62 @@ class _MockParam extends Mock implements FormalParameterElement {}
 class _MockField extends Mock implements FieldElement {}
 
 class _MockInterfaceType extends Mock implements InterfaceType {}
+
+/// A provider that cannot name a state location.
+class _NoStateLocationResourceProvider implements ResourceProvider {
+  _NoStateLocationResourceProvider(this._delegate);
+
+  final MemoryResourceProvider _delegate;
+
+  @override
+  p.Context get pathContext => _delegate.pathContext;
+
+  @override
+  File getFile(String path) => _delegate.getFile(path);
+
+  @override
+  Folder getFolder(String path) => _delegate.getFolder(path);
+
+  @override
+  Link getLink(String path) => _delegate.getLink(path);
+
+  @override
+  Resource getResource(String path) => _delegate.getResource(path);
+
+  @override
+  Folder? getStateLocation(String pluginId) => null;
+}
+
+/// Path of the fake SDK written by [_seedSdk].
+const _sdkPath = '/sdk';
+
+/// Writes the minimal SDK layout an [AnalysisContextCollection] needs into
+/// [mem], plus an empty package at `/root`.
+void _seedSdk(MemoryResourceProvider mem) {
+  mem
+    ..newFile('$_sdkPath/version', '3.12.0')
+    ..newFile(
+      '$_sdkPath/lib/_internal/allowed_experiments.json',
+      '{"version":1,"experimentSets":{},"experiments":{}}',
+    )
+    ..newFile(
+      '$_sdkPath/lib/_internal/sdk_library_metadata/lib/libraries.dart',
+      'const Map<String, LibraryInfo> libraries = const {'
+          "  'core': const LibraryInfo('core/core.dart'), "
+          '};\n'
+          'class LibraryInfo {\n'
+          '  final String path;\n'
+          '  const LibraryInfo(this.path);\n'
+          '}\n',
+    )
+    ..newFile('$_sdkPath/lib/core/core.dart', 'library dart.core;')
+    ..newFile(
+      '$_sdkPath/lib/libraries.json',
+      '{"comment":"","vm":{"libraries":{}},'
+          '"dart2js":{"libraries":{}},"dartdevc":{"libraries":{}}}',
+    )
+    ..newFolder('/root/lib');
+}
 
 class _MockInterfaceElement extends Mock implements InterfaceElement {}
 
@@ -629,37 +686,15 @@ void main() {
 
     test('defaultCreateCollection creates cache dir and returns '
         'a collection', () async {
-      // AnalysisContextCollectionImpl needs a minimal SDK structure.
-      final mem = MemoryResourceProvider();
-      const sdkPath = '/sdk';
-      mem
-        ..newFile('$sdkPath/version', '3.12.0')
-        ..newFile(
-          '$sdkPath/lib/_internal/allowed_experiments.json',
-          '{"version":1,"experimentSets":{},"experiments":{}}',
-        )
-        ..newFile(
-          '$sdkPath/lib/_internal/sdk_library_metadata/lib/libraries.dart',
-          'const Map<String, LibraryInfo> libraries = const {'
-              "  'core': const LibraryInfo('core/core.dart'), "
-              '};\n'
-              'class LibraryInfo {\n'
-              '  final String path;\n'
-              '  const LibraryInfo(this.path);\n'
-              '}\n',
-        )
-        ..newFile('$sdkPath/lib/core/core.dart', 'library dart.core;')
-        ..newFile(
-          '$sdkPath/lib/libraries.json',
-          '{"comment":"","vm":{"libraries":{}},'
-              '"dart2js":{"libraries":{}},"dartdevc":{"libraries":{}}}',
-        )
-        ..newFolder('/root/lib');
+      final mem = MemoryResourceProvider(
+        context: p.Context(style: p.Style.posix),
+      );
+      _seedSdk(mem);
 
       final collection = AnalyzerAdapter.defaultCreateCollection(
         includedPaths: ['/root/lib'],
         resourceProvider: mem,
-        sdkPath: sdkPath,
+        sdkPath: _sdkPath,
       );
 
       expect(collection, isA<AnalysisContextCollection>());
@@ -669,6 +704,23 @@ void main() {
         mem.getFolder('/user/home/analysis-driver').exists,
         isTrue,
       );
+      await collection.dispose();
+    });
+
+    test('defaultCreateCollection returns a collection when the provider '
+        'has no state location', () async {
+      final mem = MemoryResourceProvider(
+        context: p.Context(style: p.Style.posix),
+      );
+      _seedSdk(mem);
+
+      final collection = AnalyzerAdapter.defaultCreateCollection(
+        includedPaths: ['/root/lib'],
+        resourceProvider: _NoStateLocationResourceProvider(mem),
+        sdkPath: _sdkPath,
+      );
+
+      expect(collection, isA<AnalysisContextCollection>());
       await collection.dispose();
     });
 

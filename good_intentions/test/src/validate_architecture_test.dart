@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:analyzer/file_system/memory_file_system.dart';
 import 'package:good_intentions/good_intentions.dart';
 import 'package:hooks/hooks.dart';
 import 'package:intentions_engine/intentions_engine.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 class _MockClassCollector extends Mock implements ClassCollector {}
@@ -98,7 +101,9 @@ void main() {
 
   group('ArchitectureValidator.withDefaults', () {
     test('returns validator wired with correct dependencies', () {
-      final mem = MemoryResourceProvider();
+      final mem = MemoryResourceProvider(
+        context: p.Context(style: p.Style.posix),
+      );
 
       final validator = ArchitectureValidator.withDefaults(
         resourceProvider: mem,
@@ -149,7 +154,7 @@ void main() {
     });
 
     setUp(() {
-      mem = MemoryResourceProvider();
+      mem = MemoryResourceProvider(context: p.Context(style: p.Style.posix));
       mockCollector = _MockClassCollector();
       mockReporter = _MockValidationReporter();
       mockPumlWriter = _MockPumlWriter();
@@ -408,7 +413,7 @@ void main() {
             logger: any(named: 'logger'),
           ),
         ).captured;
-        expect(captured[0], contains('/root'));
+        expect(captured[0], Directory.fromUri(Uri.directory('/root/')).path);
         expect(captured[1], 'test_pkg');
       },
     );

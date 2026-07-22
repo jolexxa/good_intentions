@@ -15,7 +15,6 @@ import 'package:hooks/hooks.dart';
 import 'package:intentions/intentions.dart' as annotations;
 import 'package:intentions_engine/intentions_engine.dart';
 import 'package:meta/meta.dart';
-import 'package:path/path.dart' as p;
 
 /// Signature matching the [build] function from `package:hooks`.
 typedef BuildRunner =
@@ -209,8 +208,13 @@ class ArchitectureValidator {
     reportResults(report, logger);
 
     // Write PlantUML diagram.
-    final pumlPath = p.join(packageRoot, 'lib', 'architecture.g.puml');
-    final pumlFile = resolver.resourceProvider.getFile(pumlPath);
+    final resourceProvider = resolver.resourceProvider;
+    final pumlPath = resourceProvider.pathContext.join(
+      packageRoot,
+      'lib',
+      'architecture.g.puml',
+    );
+    final pumlFile = resourceProvider.getFile(pumlPath);
     pumlFile.parent.create();
     pumlFile.writeAsStringSync(report.puml);
 
