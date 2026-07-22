@@ -6,6 +6,9 @@ import 'package:analyzer/file_system/file_system.dart';
 // The public API doesn't expose `byteStore`, so we use the internal impl.
 // ignore: implementation_imports
 import 'package:analyzer/src/dart/analysis/analysis_context_collection.dart';
+// MemoryByteStore backs the cache when no state location is available.
+// ignore: implementation_imports
+import 'package:analyzer/src/dart/analysis/byte_store.dart';
 // FileByteStore shares the analysis server's on-disk cache.
 // ignore: implementation_imports
 import 'package:analyzer/src/dart/analysis/file_byte_store.dart';
@@ -50,9 +53,9 @@ class AnalyzerAdapter {
 
   /// Factory for creating the analysis context collection.
   ///
-  /// Defaults to [defaultCreateCollection] which uses
-  /// [AnalysisContextCollectionImpl] with [FileByteStore] sharing the
-  /// analysis server's on-disk cache at `~/.dartServer/.analysis-driver/`.
+  /// Defaults to [defaultCreateCollection], which shares the analysis
+  /// server's on-disk cache at `~/.dartServer/.analysis-driver/` when one
+  /// is reachable and caches in memory when it is not.
   ///
   /// Swap in tests to return a mock collection.
   @visibleForTesting
@@ -71,14 +74,14 @@ class AnalyzerAdapter {
     required ResourceProvider resourceProvider,
     String? sdkPath,
   }) {
-    // Use the analyzer's own state location (~/.dartServer/analysis-driver)
-    // so we share the analysis server's disk cache. This resolves the home
-    // directory via ResourceProvider, which works on all platforms without
-    // needing Platform.environment['HOME'].
-    final cacheFolder = resourceProvider.getStateLocation('analysis-driver')!;
+    // Share the analysis server's disk cache when a state location is
+    // available, and cache in memory when it is not.
+    final cacheFolder = resourceProvider.getStateLocation('analysis-driver');
     return AnalysisContextCollectionImpl(
       includedPaths: includedPaths,
-      byteStore: FileByteStore(cacheFolder.path),
+      byteStore: cacheFolder == null
+          ? MemoryByteStore()
+          : FileByteStore(cacheFolder.path),
       resourceProvider: resourceProvider,
       sdkPath: sdkPath,
     );
